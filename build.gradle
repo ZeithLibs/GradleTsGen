@@ -4,7 +4,7 @@ plugins {
     id 'maven-publish'
     id 'java-gradle-plugin'
 
-    id 'dev.zeith.gradle.JvmTsGen' version "1.0.2"
+    id 'dev.zeith.gradle.JvmTsGen' version "1.0.3"
 }
 
 group = 'dev.zeith.gradle'
@@ -27,7 +27,7 @@ repositories {
 }
 
 dependencies {
-    implementation("dev.zeith.libs:TsFacadeGenerator:1.0.2")
+    implementation("dev.zeith.libs:TsFacadeGenerator:1.0.3")
     implementation("org.ow2.asm:asm:$owasm")
     implementation("org.ow2.asm:asm-tree:$owasm")
     compileOnly "org.projectlombok:lombok:$lombok"
