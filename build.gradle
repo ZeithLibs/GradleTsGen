@@ -1,0 +1,68 @@
+plugins {
+    id 'java'
+    id 'groovy'
+    id 'maven-publish'
+    id 'java-gradle-plugin'
+
+    id 'dev.zeith.gradle.JvmTsGen' version "1.0.2"
+}
+
+group = 'dev.zeith.gradle'
+
+genTypescript {
+//    outputDir = file("build/generated/ts")
+    cleanOutputDir = true
+    importStrategy = dev.zeith.jvmtsgen.tasks.ImportStrategy.IMPORT_FROM
+    includeJvm = true
+//    logSkippedClasses = true
+//    detailedErrorLog = true
+//    classFilter = { it.startsWith("java/util/Array") }
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        url "https://maven.zeith.org"
+    }
+}
+
+dependencies {
+    implementation("dev.zeith.libs:TsFacadeGenerator:1.0.2")
+    implementation("org.ow2.asm:asm:$owasm")
+    implementation("org.ow2.asm:asm-tree:$owasm")
+    compileOnly "org.projectlombok:lombok:$lombok"
+    annotationProcessor "org.projectlombok:lombok:$lombok"
+    testCompileOnly "org.projectlombok:lombok:$lombok"
+    testAnnotationProcessor "org.projectlombok:lombok:$lombok"
+}
+
+gradlePlugin {
+    plugins {
+        jvmTsGenGradle {
+            id = 'dev.zeith.gradle.JvmTsGen'
+            implementationClass = 'dev.zeith.jvmtsgen.JvmTsGenPlugin'
+        }
+    }
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = 'dev.zeith.gradle'
+            artifactId = 'JvmTsGen'
+
+            from components.java
+
+            pom {
+                name = 'JvmTsGen'
+                description = 'Gradle plugin used to generate typescript adapters for java types.'
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            url System.env.MAVEN_URL
+        }
+    }
+}

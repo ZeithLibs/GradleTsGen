@@ -1,0 +1,8 @@
+pluginManagement {
+    repositories {
+        mavenCentral()
+        maven { url = 'https://maven.zeith.org/' }
+    }
+}
+
+rootProject.name = 'JvmTsGen'
