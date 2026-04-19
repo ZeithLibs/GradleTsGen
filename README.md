@@ -19,7 +19,7 @@ pluginManagement {
 - `build.gradle`: 
 ```groovy
 plugins {
-    id 'dev.zeith.gradle.JvmTsGen' version "1.1.3"
+    id 'dev.zeith.gradle.JvmTsGen' version "1.1.5"
 }
 ```
 
@@ -34,6 +34,7 @@ genTypescript {
     includeJvm = true
     logSkippedClasses = false
     detailedErrorLog = false
+    tsNoCheck = true
     classFilter = { it.startsWith("java/") }
 }
 ```

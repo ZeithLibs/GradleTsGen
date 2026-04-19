@@ -15,9 +15,17 @@ import java.util.function.*;
 
 public class TsMultiGenerator
 {
-	public static void generate(List<Source> allSources, Supplier<BulkTypeScriptExporter> exporterFactory, Predicate<String> filter, BaseImportModel importModel, boolean logSkippedClasses, boolean detailedErrorLog)
+	public static void generate(
+			List<Source> allSources,
+			Supplier<BulkTypeScriptExporter> exporterFactory,
+			Predicate<String> filter,
+			BaseImportModel importModel,
+			boolean logSkippedClasses, boolean detailedErrorLog,
+			boolean tsNoCheck
+	)
 			throws IOException
 	{
+		String prefix = tsNoCheck ? "// @ts-nocheck\n" : "";
 		Map<String, TaskQueue> saveTasks = new LinkedHashMap<>();
 		Function<String, TaskQueue> compute = n -> TaskQueue.createStarted();
 		Function<String, TaskQueue> getQueue = n -> saveTasks.computeIfAbsent(n, compute);
@@ -76,7 +84,7 @@ public class TsMultiGenerator
 								{
 									try
 									{
-										BulkTypeScriptExporter.optimize(fl, importModel);
+										BulkTypeScriptExporter.optimize(fl, importModel, prefix, "");
 									} catch(IOException e)
 									{
 										throw new UncheckedIOException(e);

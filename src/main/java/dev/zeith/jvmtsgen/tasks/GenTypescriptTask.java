@@ -46,6 +46,10 @@ public abstract class GenTypescriptTask
 	@Optional
 	public abstract Property<Boolean> getCleanOutputDir();
 	
+	@Input
+	@Optional
+	public abstract Property<Boolean> getTsNoCheck();
+	
 	@Setter
 	private Spec<String> classFilter = s -> true;
 	
@@ -143,7 +147,8 @@ public abstract class GenTypescriptTask
 				filter,
 				importModel,
 				logSkippedClasses,
-				detailedErrorLog
+				detailedErrorLog,
+				getTsNoCheck().getOrElse(true)
 		);
 	}
 	
