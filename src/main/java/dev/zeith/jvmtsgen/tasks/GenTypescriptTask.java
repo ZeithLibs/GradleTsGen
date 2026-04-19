@@ -1,13 +1,13 @@
 package dev.zeith.jvmtsgen.tasks;
 
 import dev.zeith.jvmtsgen.src.Source;
-import dev.zeith.jvmtsgen.util.TaskQueue;
+import dev.zeith.jvmtsgen.util.TsMultiGenerator;
 import dev.zeith.tsgen.*;
 import dev.zeith.tsgen.imports.BaseImportModel;
-import dev.zeith.tsgen.parse.ClassModel;
 import lombok.Setter;
 import org.gradle.api.DefaultTask;
-import org.gradle.api.file.*;
+import org.gradle.api.artifacts.*;
+import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.*;
@@ -17,17 +17,12 @@ import org.gradle.work.DisableCachingByDefault;
 import java.io.*;
 import java.nio.file.Files;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.*;
 
 @DisableCachingByDefault(because = "Typescript generation is an optional task and should always run when called.")
 public abstract class GenTypescriptTask
 		extends DefaultTask
 {
-	@InputFiles
-	public abstract ConfigurableFileCollection getClasspath();
-	
 	@OutputDirectory
 	public abstract DirectoryProperty getOutputDir();
 	
@@ -58,22 +53,78 @@ public abstract class GenTypescriptTask
 	public void doTask()
 			throws IOException
 	{
+		final String sourceSetName = "main";
+		
 		File outDir = getOutputDir().get().getAsFile();
 		if(outDir.exists() && getCleanOutputDir().getOrElse(true)) deleteDir(outDir);
 		outDir.mkdirs();
 		
-		Spec<String> filter = classFilter;
+		List<Source> allSources = new ArrayList<>();
 		
-		boolean detailedErrorLog = getDetailedErrorLog().getOrElse(false);
+		//<editor-fold desc="Source resolution">
+		Map<String, String> artifactKeys = new HashMap<>();
+		Map<String, File> sourceMap = new HashMap<>();
+		ResolvedConfiguration resolved = getProject().getConfigurations().getByName("compileClasspath").getResolvedConfiguration();
+		for(ResolvedArtifact artifact : resolved.getResolvedArtifacts())
+		{
+			ModuleVersionIdentifier id = artifact.getModuleVersion().getId();
+			String key = id.getGroup() + ":" + id.getName() + ":" + id.getVersion();
+			Configuration sourceCfg = getProject().getConfigurations().detachedConfiguration();
+			
+			sourceCfg.setTransitive(false);
+			
+			Dependency dep = getProject().getDependencies().create(key + ":sources");
+			
+			sourceCfg.getDependencies().add(dep);
+			
+			File srcJar = null;
+			try
+			{
+				srcJar = sourceCfg.resolve().stream().findFirst().orElse(null);
+			} catch(Exception ignored) {}
+			
+			artifactKeys.put(artifact.getFile().getAbsolutePath(), key);
+			sourceMap.put(key, srcJar);
+		}
 		
-		Map<String, TaskQueue> saveTasks = new LinkedHashMap<>();
-		Function<String, TaskQueue> compute = n -> TaskQueue.createStarted();
-		Function<String, TaskQueue> getQueue = n -> saveTasks.computeIfAbsent(n, compute);
+		SourceSet srcSet = getProject()
+				.getExtensions()
+				.getByType(SourceSetContainer.class)
+				.getByName(sourceSetName);
+		
+		Set<File> unifiedClasspath = new LinkedHashSet<>();
+		unifiedClasspath.addAll(srcSet.getCompileClasspath().getFiles());
+		unifiedClasspath.addAll(srcSet.getOutput().getClassesDirs().getFiles());
+		for(File file : unifiedClasspath)
+		{
+			String key = artifactKeys.getOrDefault(file.getAbsolutePath(), file.getName());
+			File srcFile = sourceMap.get(key);
+			
+			if(srcFile == null && isProjectOutput(file, srcSet))
+				srcFile = srcSet
+						.getAllSource()
+						.getSrcDirs()
+						.stream()
+						.filter(f -> file.getAbsolutePath().replace(File.separator, "/").endsWith(f.getName() + "/" + sourceSetName))
+						.filter(File::isDirectory)
+						.findFirst()
+						.orElse(null);
+			
+			if(srcFile != null)
+				System.out.println("Add source to " + key + " - " + srcFile.getAbsolutePath());
+			
+			allSources.add(Source.ofFile(file, srcFile));
+		}
+		//</editor-fold>
+		
+		if(getIncludeJvm().getOrElse(true))
+			allSources.add(Source.ofJrt().filter(s -> s.startsWith("java/") || s.startsWith("javax/")));
 		
 		var pathResolver = IPathResolver.FROM_PACKAGE;
 		
-		BaseImportModel importModel = getImportStrategy().getOrElse(ImportStrategy.REQUIRE).getImportModel().clone();
+		BaseImportModel importModel = getImportStrategy().getOrElse(ImportStrategy.IMPORT_FROM).getImportModel().clone();
 		importModel.setFilePath(pathResolver);
+		boolean detailedErrorLog = getDetailedErrorLog().getOrElse(false);
 		boolean logSkippedClasses = getLogSkippedClasses().getOrElse(false);
 		
 		Supplier<BulkTypeScriptExporter> exporterFactory = () -> BulkTypeScriptExporter
@@ -84,83 +135,22 @@ public abstract class GenTypescriptTask
 				.configurator(tsg -> tsg.withExceptionHandler(GeneratorExceptionHandler.SKIP_FAILED_ENTRY))
 				.build();
 		
-		Map<String, Runnable> optimizeTasks = new ConcurrentHashMap<>();
-		AtomicInteger taskCount = new AtomicInteger();
+		Predicate<String> filter = classFilter::isSatisfiedBy;
 		
-		List<Source> sources = new ArrayList<>();
-		
-		for(File file : getClasspath().getFiles())
-			sources.add(Source.ofFile(file));
-		
-		if(getIncludeJvm().getOrElse(true))
-			sources.add(Source.ofJrt().filter(s -> s.startsWith("java/") || s.startsWith("javax/")));
-		
-		for(Source src : sources)
-		{
-			var exporter = exporterFactory.get();
-			
-			src.visit((name, buffer) ->
-			{
-				if(name.equals("module-info.class")) return;
-				
-				String queueName;
-				String internalName = name.substring(0, name.length() - 6); // remove .class
-				try
-				{
-					queueName = exporter.getFilePathOf(internalName);
-				} catch(StringIndexOutOfBoundsException e)
-				{
-					return;
-				}
-				
-				if(!filter.isSatisfiedBy(internalName)) return;
-				
-				TaskQueue queue = getQueue.apply(queueName);
-				
-				taskCount.incrementAndGet();
-				queue.defer(() ->
-				{
-					try
-					{
-						ClassModel model = ClassModel.parse(buffer);
-						if(model == null || !model.name().getInternalName().contains("/") || !model.isPublic()) return;
-						// If you're exporting to different files, this may be async. (Manual async implementation required)
-						File fl = exporter.export(model);
-						
-						optimizeTasks.put(queueName, () ->
-								{
-									try
-									{
-										BulkTypeScriptExporter.optimize(fl, importModel);
-									} catch(IOException e)
-									{
-										throw new UncheckedIOException(e);
-									}
-								}
-						);
-					} catch(Exception e)
-					{
-						if(logSkippedClasses)
-						{
-							System.err.println("[" + src.getName() + "] Failed to parse class @ " + name);
-							if(detailedErrorLog) e.printStackTrace();
-						}
-					}
-				});
-			});
-		}
-		
-		System.out.println("Waiting for " + taskCount + " tasks in " + saveTasks.values().size() + " files to complete");
-		TaskQueue.waitForIdle(saveTasks.values());
-		
-		System.out.println("Initializing import optimization...");
-		for(Map.Entry<String, Runnable> e : optimizeTasks.entrySet())
-			getQueue.apply(e.getKey()).defer(e.getValue());
-		
-		System.out.println("Waiting for optimization to complete...");
-		TaskQueue.closeAll(saveTasks.values());
-		
-		System.out.println("TS generation complete.");
+		TsMultiGenerator.generate(
+				allSources,
+				exporterFactory,
+				filter,
+				importModel,
+				logSkippedClasses,
+				detailedErrorLog
+		);
+	}
+	
+	private boolean isProjectOutput(File file, SourceSet main)
+	{
+		return main.getOutput().getClassesDirs().getFiles().contains(file)
+				|| file.getAbsolutePath().contains("build/classes");
 	}
 	
 	public static void deleteDir(File dir)

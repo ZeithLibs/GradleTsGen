@@ -1,15 +1,16 @@
 package dev.zeith.jvmtsgen.src;
 
+import dev.zeith.jvmtsgen.util.LazyOptional;
 import dev.zeith.tsgen.parse.IClassFileVisitor;
 
 import java.io.*;
-import java.util.function.*;
+import java.util.function.Predicate;
 
 public interface Source
 {
 	String getName();
 	
-	void visit(BiConsumer<String, byte[]> consumer)
+	void visit(SourceEntryVisitor consumer)
 			throws IOException;
 	
 	default Source filter(Predicate<String> filter)
@@ -24,33 +25,35 @@ public interface Source
 			}
 			
 			@Override
-			public void visit(BiConsumer<String, byte[]> consumer)
+			public void visit(SourceEntryVisitor consumer)
 					throws IOException
 			{
-				base.visit((path, data) ->
+				base.visit((path, data, src) ->
 				{
 					if(filter.test(path))
-						consumer.accept(path, data);
+						consumer.visit(path, data, src);
 				});
 			}
 		};
 	}
 	
-	static Source ofFile(File file)
+	static Source ofFile(File compiledJar, File sourceJar)
 	{
 		return new Source()
 		{
 			@Override
 			public String getName()
 			{
-				return file.getName();
+				return compiledJar.getName();
 			}
 			
 			@Override
-			public void visit(BiConsumer<String, byte[]> consumer)
+			public void visit(SourceEntryVisitor consumer)
 					throws IOException
 			{
-				IClassFileVisitor.visit(file, (p, h) -> consumer.accept(p, h.readAllBytes()));
+				IClassFileVisitor.visit(compiledJar, sourceJar, (p, h, src) ->
+						consumer.visit(p, h.readAllBytes(), src.map(s -> LazyOptional.of(() -> s)).orElseGet(LazyOptional::empty))
+				);
 			}
 		};
 	}

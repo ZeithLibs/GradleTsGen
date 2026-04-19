@@ -2,7 +2,6 @@ package dev.zeith.jvmtsgen;
 
 import dev.zeith.jvmtsgen.tasks.GenTypescriptTask;
 import org.gradle.api.*;
-import org.gradle.api.tasks.SourceSetContainer;
 
 public class JvmTsGenPlugin
 		implements Plugin<Project>
@@ -14,13 +13,6 @@ public class JvmTsGenPlugin
 				{
 					t.notCompatibleWithConfigurationCache("Typescript generation is an optional task and should always run when called.");
 					t.setGroup("build");
-					
-					t.getClasspath().from(project
-							.getExtensions()
-							.getByType(SourceSetContainer.class)
-							.getByName("main")
-							.getRuntimeClasspath()
-					);
 					
 					t.getOutputDir().set(project
 							.getLayout()
