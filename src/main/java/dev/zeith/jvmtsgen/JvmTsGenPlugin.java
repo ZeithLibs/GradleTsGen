@@ -11,6 +11,8 @@ public class JvmTsGenPlugin
 	{
 		project.getTasks().register("genTypescript", GenTypescriptTask.class, t ->
 				{
+					t.getOutputs().upToDateWhen(t2 -> false);
+					
 					t.notCompatibleWithConfigurationCache("Typescript generation is an optional task and should always run when called.");
 					t.setGroup("build");
 					
