@@ -35,7 +35,7 @@ repositories {
 }
 
 dependencies {
-    implementation("dev.zeith.libs:TsFacadeGenerator:1.1.7")
+    implementation("dev.zeith.libs:TsFacadeGenerator:1.1.8")
     implementation("org.ow2.asm:asm:$owasm")
     implementation("org.ow2.asm:asm-tree:$owasm")
     compileOnly "org.projectlombok:lombok:$lombok"
