@@ -174,7 +174,7 @@ public class TaskQueue
 		return queue;
 	}
 	
-	public static void async(String name, Runnable task)
+	public static Thread async(String name, Runnable task)
 	{
 		Thread thread = tryStartVirtual(task);
 		if(thread == null)
@@ -182,6 +182,7 @@ public class TaskQueue
 			thread = new Thread(task, name);
 			thread.start();
 		}
+		return thread;
 	}
 	
 	private static Thread tryStartVirtual(Runnable task)
