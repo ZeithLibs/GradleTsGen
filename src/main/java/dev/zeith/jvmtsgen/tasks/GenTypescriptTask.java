@@ -50,6 +50,10 @@ public abstract class GenTypescriptTask
 	@Optional
 	public abstract Property<Boolean> getTsNoCheck();
 	
+	@Input
+	@Optional
+	public abstract Property<Integer> getMaxQueueSize();
+	
 	@Setter
 	private Spec<String> classFilter = s -> true;
 	
@@ -148,7 +152,8 @@ public abstract class GenTypescriptTask
 				importModel,
 				logSkippedClasses,
 				detailedErrorLog,
-				getTsNoCheck().getOrElse(true)
+				getTsNoCheck().getOrElse(true),
+				getMaxQueueSize().getOrElse(0)
 		);
 	}
 	

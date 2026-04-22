@@ -32,6 +32,7 @@ public class TestSourceGen
 		importModel.setFilePath(pathResolver);
 		boolean detailedErrorLog = true;
 		boolean logSkippedClasses = true;
+		boolean noTsCheck = true;
 		
 		Supplier<BulkTypeScriptExporter> exporterFactory = () -> BulkTypeScriptExporter
 				.builder()
@@ -49,7 +50,9 @@ public class TestSourceGen
 				filter,
 				importModel,
 				logSkippedClasses,
-				detailedErrorLog
+				detailedErrorLog,
+				noTsCheck,
+				64
 		);
 	}
 	

@@ -21,13 +21,39 @@ public class TsMultiGenerator
 			Predicate<String> filter,
 			BaseImportModel importModel,
 			boolean logSkippedClasses, boolean detailedErrorLog,
-			boolean tsNoCheck
+			boolean tsNoCheck,
+			int maxQueueSize
 	)
 			throws IOException
 	{
 		String prefix = tsNoCheck ? "// @ts-nocheck\n" : "";
+		
+		
 		Map<String, TaskQueue> saveTasks = new LinkedHashMap<>();
-		Function<String, TaskQueue> compute = n -> TaskQueue.createStarted();
+		
+		final IntSupplier threadCount;
+		final Function<String, TaskQueue> compute;
+		
+		if(maxQueueSize > 0)
+		{
+			List<TaskQueue> queueCache = new ArrayList<>();
+			for(int i = 0; i < maxQueueSize; i++) queueCache.add(TaskQueue.createStarted());
+			AtomicInteger queuePointer = new AtomicInteger(0);
+			IntUnaryOperator updator = i -> (i + 1) % maxQueueSize;
+			IntSupplier nextQueue = () -> queuePointer.getAndUpdate(updator);
+			compute = n -> queueCache.get(nextQueue.getAsInt());
+			threadCount = queueCache::size;
+		} else
+		{
+			AtomicInteger threadCounter = new AtomicInteger(0);
+			compute = n ->
+			{
+				threadCounter.incrementAndGet();
+				return TaskQueue.createStarted();
+			};
+			threadCount = threadCounter::get;
+		}
+		
 		Function<String, TaskQueue> getQueue = n -> saveTasks.computeIfAbsent(n, compute);
 		
 		Map<String, Runnable> optimizeTasks = new ConcurrentHashMap<>();
@@ -103,7 +129,7 @@ public class TsMultiGenerator
 			});
 		}
 		
-		System.out.println("Waiting for " + taskCount + " tasks in " + saveTasks.values().size() + " files to complete");
+		System.out.println("Waiting for " + taskCount + " tasks in " + saveTasks.values().size() + " files to complete in " + threadCount.getAsInt() + " threads");
 		TaskQueue.waitForIdle(saveTasks.values());
 		
 		System.out.println("Initializing import optimization...");

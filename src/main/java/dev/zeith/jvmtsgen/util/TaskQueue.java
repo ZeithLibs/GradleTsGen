@@ -5,6 +5,7 @@ import lombok.SneakyThrows;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class TaskQueue
 		implements Runnable, AutoCloseable
@@ -12,6 +13,7 @@ public class TaskQueue
 	protected final Object lock = new Object();
 	protected final Queue<Runnable> tasks = new ArrayDeque<>();
 	protected final Semaphore closureSemaphore = new Semaphore(0);
+	protected final AtomicBoolean isDone = new AtomicBoolean(false);
 	
 	protected boolean running = false;
 	
@@ -33,16 +35,15 @@ public class TaskQueue
 						lock.wait();
 					} catch(InterruptedException e)
 					{
+						onClosure();
 						Thread.currentThread().interrupt();
-						closureSemaphore.release();
 						return;
 					}
 				}
 				
 				if(!running && tasks.isEmpty())
 				{
-					closureSemaphore.release();
-					lock.notifyAll();
+					onClosure();
 					return;
 				}
 				
@@ -58,8 +59,8 @@ public class TaskQueue
 			{
 				if(t instanceof InterruptedException)
 				{
+					onClosure();
 					Thread.currentThread().interrupt();
-					closureSemaphore.release();
 					return;
 				}
 				
@@ -74,6 +75,13 @@ public class TaskQueue
 				}
 			}
 		}
+	}
+	
+	private void onClosure()
+	{
+		closureSemaphore.release();
+		lock.notifyAll();
+		isDone.set(true);
 	}
 	
 	public void defer(Runnable task)
@@ -114,6 +122,7 @@ public class TaskQueue
 	public void waitFor()
 			throws InterruptedException
 	{
+		if(isDone.get()) return;
 		closureSemaphore.acquire();
 	}
 	
