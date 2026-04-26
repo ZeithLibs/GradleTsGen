@@ -19,7 +19,7 @@ pluginManagement {
 - `build.gradle`: 
 ```groovy
 plugins {
-    id 'dev.zeith.gradle.JvmTsGen' version "1.1.10"
+    id 'dev.zeith.gradle.JvmTsGen' version "1.1.12"
 }
 ```
 
