@@ -19,7 +19,7 @@ pluginManagement {
 - `build.gradle`: 
 ```groovy
 plugins {
-    id 'dev.zeith.gradle.JvmTsGen' version "1.1.12"
+    id 'dev.zeith.gradle.JvmTsGen' version "1.2.0"
 }
 ```
 
@@ -57,5 +57,12 @@ genTypescript {
     
     // Filters the classes to be included into generation as a path predicate
     classFilter = { it.startsWith("java/") }
+
+    // Typescript generation extensions.
+    // If the extension is included into both enabled and disabled list, it will be active.
+    // Currently supported extensions:
+    // - 'org.mozilla:rhino:__javaObject__' - Adds static Class<T> field __javaObject__ into every declare class. Useful for interop with Mozilla Rhino
+    enabledExtensions = ['org.mozilla:rhino:__javaObject__']
+    disabledExtensions = []
 }
 ```

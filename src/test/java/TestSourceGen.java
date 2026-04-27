@@ -2,6 +2,7 @@ import dev.zeith.jvmtsgen.src.Source;
 import dev.zeith.jvmtsgen.tasks.ImportStrategy;
 import dev.zeith.jvmtsgen.util.TsMultiGenerator;
 import dev.zeith.tsgen.*;
+import dev.zeith.tsgen.api.IGenerationExtension;
 import dev.zeith.tsgen.imports.BaseImportModel;
 
 import java.io.*;
@@ -52,7 +53,8 @@ public class TestSourceGen
 				logSkippedClasses,
 				detailedErrorLog,
 				noTsCheck,
-				64
+				64,
+				IGenerationExtension.DEFAULT_ENABLED
 		);
 	}
 	

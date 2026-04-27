@@ -2,6 +2,7 @@ package dev.zeith.jvmtsgen.util;
 
 import dev.zeith.jvmtsgen.src.Source;
 import dev.zeith.tsgen.BulkTypeScriptExporter;
+import dev.zeith.tsgen.api.IGenerationExtension;
 import dev.zeith.tsgen.imports.BaseImportModel;
 import dev.zeith.tsgen.parse.model.ClassModel;
 import dev.zeith.tsgen.parse.src.model.SourceClassModel;
@@ -22,9 +23,9 @@ public class TsMultiGenerator
 			BaseImportModel importModel,
 			boolean logSkippedClasses, boolean detailedErrorLog,
 			boolean tsNoCheck,
-			int maxQueueSize
+			int maxQueueSize,
+			Predicate<IGenerationExtension> enabledExtensions
 	)
-			throws IOException
 	{
 		String prefix = tsNoCheck ? "// @ts-nocheck\n" : "";
 		
@@ -112,7 +113,7 @@ public class TsMultiGenerator
 										}).orElse(emptyMap);
 										
 										// If you're exporting to different files, this may be async. (Manual async implementation required)
-										File fl = exporter.export(model, classes.get(model.getSimpleName()));
+										File fl = exporter.export(model, classes.get(model.getSimpleName()), enabledExtensions);
 										
 										optimizeTasks.put(queueName, () ->
 												{

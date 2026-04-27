@@ -8,7 +8,7 @@ import lombok.Setter;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.artifacts.*;
 import org.gradle.api.file.DirectoryProperty;
-import org.gradle.api.provider.Property;
+import org.gradle.api.provider.*;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.*;
 import org.gradle.api.tasks.Optional;
@@ -53,6 +53,14 @@ public abstract class GenTypescriptTask
 	@Input
 	@Optional
 	public abstract Property<Integer> getMaxQueueSize();
+	
+	@Input
+	@Optional
+	public abstract ListProperty<String> getEnabledExtensions();
+	
+	@Input
+	@Optional
+	public abstract ListProperty<String> getDisabledExtensions();
 	
 	@Setter
 	private Spec<String> classFilter = s -> true;
@@ -145,6 +153,9 @@ public abstract class GenTypescriptTask
 		
 		Predicate<String> filter = classFilter::isSatisfiedBy;
 		
+		var enabledExt = Set.copyOf(getEnabledExtensions().getOrElse(List.of()));
+		var disabledExt = Set.copyOf(getDisabledExtensions().getOrElse(List.of()));
+		
 		TsMultiGenerator.generate(
 				allSources,
 				exporterFactory,
@@ -153,7 +164,12 @@ public abstract class GenTypescriptTask
 				logSkippedClasses,
 				detailedErrorLog,
 				getTsNoCheck().getOrElse(true),
-				getMaxQueueSize().getOrElse(0)
+				getMaxQueueSize().getOrElse(0),
+				ext ->
+				{
+					var id = ext.getId();
+					return enabledExt.contains(id) || (ext.defaultEnabled() && !disabledExt.contains(id));
+				}
 		);
 	}
 	
