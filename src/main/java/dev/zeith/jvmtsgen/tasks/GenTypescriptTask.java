@@ -3,7 +3,9 @@ package dev.zeith.jvmtsgen.tasks;
 import dev.zeith.jvmtsgen.src.Source;
 import dev.zeith.jvmtsgen.util.*;
 import dev.zeith.tsgen.*;
+import dev.zeith.tsgen.api.IGenerationExtension;
 import dev.zeith.tsgen.imports.BaseImportModel;
+import dev.zeith.tsgen.util.StringQuoter;
 import groovy.lang.Closure;
 import lombok.Setter;
 import org.gradle.api.*;
@@ -20,6 +22,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.function.*;
+import java.util.stream.Collectors;
 
 @DisableCachingByDefault(because = "Typescript generation is an optional task and should always run when called.")
 public abstract class GenTypescriptTask
@@ -148,6 +151,15 @@ public abstract class GenTypescriptTask
 		var enabledExt = Set.copyOf(getEnabledExtensions().getOrElse(List.of()));
 		var disabledExt = Set.copyOf(getDisabledExtensions().getOrElse(List.of()));
 		
+		Predicate<IGenerationExtension> extFilter = ext ->
+		{
+			var id = ext.getId();
+			return enabledExt.contains(id) || (ext.defaultEnabled() && !disabledExt.contains(id));
+		};
+		
+		log("Registered TSGen extensions: [" + IGenerationExtension.get().stream().map(IGenerationExtension::getId).map(StringQuoter::quote).collect(Collectors.joining(", ")) + "]");
+		log("Enabled TSGen extensions: [" + IGenerationExtension.get().stream().filter(extFilter).map(IGenerationExtension::getId).map(StringQuoter::quote).collect(Collectors.joining(", ")) + "]");
+		
 		TsMultiGenerator.generate(
 				allSources,
 				exporterFactory,
@@ -157,13 +169,14 @@ public abstract class GenTypescriptTask
 				detailedErrorLog,
 				generatorSettings.isNoTsCheck(),
 				getMaxQueueSize().getOrElse(0),
-				ext ->
-				{
-					var id = ext.getId();
-					return enabledExt.contains(id) || (ext.defaultEnabled() && !disabledExt.contains(id));
-				},
+				extFilter,
 				generatorSettings.getNewline()
 		);
+	}
+	
+	static void log(String message)
+	{
+		System.out.println("[genTypescript] " + message);
 	}
 	
 	public void generatorSettings(Action<? super GeneratorSettings> action)
