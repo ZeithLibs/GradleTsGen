@@ -35,12 +35,18 @@ public class TestSourceGen
 		boolean logSkippedClasses = true;
 		boolean noTsCheck = true;
 		
+		String newline = "\n";
+		
 		Supplier<BulkTypeScriptExporter> exporterFactory = () -> BulkTypeScriptExporter
 				.builder()
 				.outDir(genTs)
 				.importModel(importModel)
 				.pathResolver(pathResolver)
-				.configurator(tsg -> tsg.withExceptionHandler(GeneratorExceptionHandler.SKIP_FAILED_ENTRY))
+				.configurator(tsg ->
+				{
+					tsg.exceptionHandler(GeneratorExceptionHandler.SKIP_FAILED_ENTRY);
+					tsg.newline(newline);
+				})
 				.build();
 		
 		Predicate<String> filter = f -> f != null;
@@ -53,8 +59,9 @@ public class TestSourceGen
 				logSkippedClasses,
 				detailedErrorLog,
 				noTsCheck,
-				64,
-				IGenerationExtension.DEFAULT_ENABLED
+				1024,
+				IGenerationExtension.DEFAULT_ENABLED,
+				newline
 		);
 	}
 	

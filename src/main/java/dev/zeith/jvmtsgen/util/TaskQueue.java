@@ -2,10 +2,11 @@ package dev.zeith.jvmtsgen.util;
 
 import lombok.SneakyThrows;
 
-import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static dev.zeith.jvmtsgen.util.ThreadInitializer.async;
 
 public class TaskQueue
 		implements Runnable, AutoCloseable
@@ -172,31 +173,5 @@ public class TaskQueue
 		queue.running = true;
 		async("TaskQueue", queue);
 		return queue;
-	}
-	
-	public static Thread async(String name, Runnable task)
-	{
-		Thread thread = tryStartVirtual(task);
-		if(thread == null)
-		{
-			thread = new Thread(task, name);
-			thread.start();
-		}
-		return thread;
-	}
-	
-	private static Thread tryStartVirtual(Runnable task)
-	{
-		try
-		{
-			Method ofVirtual = Thread.class.getMethod("ofVirtual");
-			Object builder = ofVirtual.invoke(null);
-			
-			Method start = builder.getClass().getMethod("start", Runnable.class);
-			return (Thread) start.invoke(builder, task);
-		} catch(Throwable ignored)
-		{
-			return null;
-		}
 	}
 }

@@ -10,9 +10,11 @@ import dev.zeith.tsgen.parse.src.parse.ISourceParserFactory;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.*;
+
+import static dev.zeith.jvmtsgen.util.ThreadInitializer.async;
 
 public class TsMultiGenerator
 {
@@ -24,52 +26,27 @@ public class TsMultiGenerator
 			boolean logSkippedClasses, boolean detailedErrorLog,
 			boolean tsNoCheck,
 			int maxQueueSize,
-			Predicate<IGenerationExtension> enabledExtensions
+			Predicate<IGenerationExtension> enabledExtensions,
+			String newline
 	)
 	{
 		String prefix = tsNoCheck ? "// @ts-nocheck\n" : "";
 		
-		Map<String, TaskQueue> saveTasks = new ConcurrentHashMap<>();
-		
-		final IntSupplier threadCount;
-		final Function<String, TaskQueue> compute;
-		
-		if(maxQueueSize > 0)
-		{
-			List<TaskQueue> queueCache = new ArrayList<>();
-			for(int i = 0; i < maxQueueSize; i++) queueCache.add(TaskQueue.createStarted());
-			AtomicInteger queuePointer = new AtomicInteger(0);
-			IntUnaryOperator updator = i -> (i + 1) % maxQueueSize;
-			IntSupplier nextQueue = () -> queuePointer.getAndUpdate(updator);
-			compute = n -> queueCache.get(nextQueue.getAsInt());
-			threadCount = queueCache::size;
-		} else
-		{
-			AtomicInteger threadCounter = new AtomicInteger(0);
-			compute = n ->
-			{
-				threadCounter.incrementAndGet();
-				return TaskQueue.createStarted();
-			};
-			threadCount = threadCounter::get;
-		}
-		
-		Function<String, TaskQueue> getQueue = n -> saveTasks.computeIfAbsent(n, compute);
+		Supplier<ExecutorService> exec = () -> maxQueueSize == 0 ? Executors.newWorkStealingPool() : Executors.newWorkStealingPool(maxQueueSize);
 		
 		Map<String, Runnable> optimizeTasks = new ConcurrentHashMap<>();
 		AtomicInteger taskCount = new AtomicInteger(0);
-		AtomicInteger activeTaskCount = new AtomicInteger(0);
-		final Object onTaskZero = new Object();
 		
 		Map<String, SourceClassModel> emptyMap = Map.of();
 		
+		FileLockedExecutorWrapper genPool = new FileLockedExecutorWrapper(exec.get(), true);
 		System.out.println("[TsMultiGenerator] Loading " + allSources.size() + " sources...");
 		List<Thread> visitThreads = new ArrayList<>();
 		for(Source src : allSources)
 		{
 			var exporter = exporterFactory.get();
 			
-			var t = TaskQueue.async("TsMultiGenerator-visit-" + src.getName(), () ->
+			var t = async("TsMultiGenerator-visit-" + src.getName(), () ->
 					{
 						try
 						{
@@ -89,59 +66,50 @@ public class TsMultiGenerator
 								
 								if(!filter.test(internalName)) return;
 								
-								TaskQueue queue = getQueue.apply(queueName);
-								
 								taskCount.incrementAndGet();
-								activeTaskCount.incrementAndGet();
-								queue.defer(() ->
-								{
-									try
-									{
-										ClassModel model = ClassModel.parse(buffer);
-										if(model == null || !model.name().getInternalName().contains("/") || !model.isPublic()) return;
-										
-										Map<String, SourceClassModel> classes = sourceCode.map(code ->
+								genPool.execute(queueName, () ->
 										{
 											try
 											{
-												var srcParser = ISourceParserFactory.BLEEDING_EDGE.createParser();
-												return SourceClassModel.parse(srcParser, code);
-											} catch(Throwable e)
-											{
-												return emptyMap;
-											}
-										}).orElse(emptyMap);
-										
-										// If you're exporting to different files, this may be async. (Manual async implementation required)
-										File fl = exporter.export(model, classes.get(model.getSimpleName()), enabledExtensions);
-										
-										optimizeTasks.put(queueName, () ->
+												ClassModel model = ClassModel.parse(buffer);
+												if(model == null || !model.name().getInternalName().contains("/") || !model.isPublic()) return;
+												
+												Map<String, SourceClassModel> classes = sourceCode.map(code ->
 												{
 													try
 													{
-														BulkTypeScriptExporter.optimize(fl, importModel, prefix, "");
-													} catch(IOException e)
+														var srcParser = ISourceParserFactory.BLEEDING_EDGE.createParser();
+														return SourceClassModel.parse(srcParser, code);
+													} catch(Throwable e)
 													{
-														throw new UncheckedIOException(e);
+														return emptyMap;
 													}
+												}).orElse(emptyMap);
+												
+												// If you're exporting to different files, this may be async. (Manual async implementation required)
+												File fl = exporter.export(model, classes.get(model.getSimpleName()), enabledExtensions);
+												
+												optimizeTasks.put(queueName, () ->
+														{
+															try
+															{
+																BulkTypeScriptExporter.optimize(fl, importModel, newline, prefix, "");
+															} catch(IOException e)
+															{
+																throw new UncheckedIOException(e);
+															}
+														}
+												);
+											} catch(Exception e)
+											{
+												if(logSkippedClasses)
+												{
+													System.err.println("[" + src.getName() + "] Failed to parse class @ " + name);
+													if(detailedErrorLog) e.printStackTrace();
 												}
-										);
-									} catch(Exception e)
-									{
-										if(logSkippedClasses)
-										{
-											System.err.println("[" + src.getName() + "] Failed to parse class @ " + name);
-											if(detailedErrorLog) e.printStackTrace();
+											}
 										}
-									} finally
-									{
-										int v = activeTaskCount.decrementAndGet();
-										if(v == 0) synchronized(onTaskZero)
-										{
-											onTaskZero.notifyAll();
-										}
-									}
-								});
+								);
 							});
 						} catch(IOException e)
 						{
@@ -166,32 +134,42 @@ public class TsMultiGenerator
 			}
 		}
 		
-		System.out.println("[TsMultiGenerator] Waiting for " + taskCount + " tasks in " + saveTasks.values().size() + " files to complete in " + threadCount.getAsInt() + " threads");
+		System.out.println("[TsMultiGenerator] Waiting for " + taskCount + " tasks in " + genPool.getPaths().size() + " files to complete.");
+		AtomicInteger activeTaskCount = genPool.getTaskCount();
+		if(awaitAndClose(genPool, activeTaskCount, genPool)) return;
+		
+		FileLockedExecutorWrapper optPool = new FileLockedExecutorWrapper(exec.get(), true);
+		
+		System.out.println("[TsMultiGenerator] Initializing import optimization...");
+		for(Map.Entry<String, Runnable> e : optimizeTasks.entrySet())
+			optPool.execute(e.getKey(), e.getValue());
+		
+		System.out.println("[TsMultiGenerator] Waiting for optimization to complete...");
+		activeTaskCount = optPool.getTaskCount();
+		if(awaitAndClose(genPool, activeTaskCount, optPool)) return;
+		
+		System.out.println("[TsMultiGenerator] TS generation complete.");
+	}
+	
+	private static boolean awaitAndClose(FileLockedExecutorWrapper genPool, AtomicInteger activeTaskCount, FileLockedExecutorWrapper optPool)
+	{
 		while(activeTaskCount.get() > 0)
 		{
 			try
 			{
-				synchronized(onTaskZero)
+				synchronized(genPool)
 				{
-					onTaskZero.wait(1000L);
+					genPool.wait(1000L);
 				}
 			} catch(InterruptedException e)
 			{
 				Thread.currentThread().interrupt();
-				return;
+				return true;
 			}
 			int v = activeTaskCount.get();
 			if(v > 0) System.out.println("[TsMultiGenerator] Waiting for " + v + " more tasks to complete...");
 		}
-		TaskQueue.waitForIdle(saveTasks.values());
-		
-		System.out.println("[TsMultiGenerator] Initializing import optimization...");
-		for(Map.Entry<String, Runnable> e : optimizeTasks.entrySet())
-			getQueue.apply(e.getKey()).defer(e.getValue());
-		
-		System.out.println("[TsMultiGenerator] Waiting for optimization to complete...");
-		TaskQueue.closeAll(saveTasks.values());
-		
-		System.out.println("[TsMultiGenerator] TS generation complete.");
+		optPool.close();
+		return false;
 	}
 }

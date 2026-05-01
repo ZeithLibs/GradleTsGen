@@ -5,7 +5,7 @@ plugins {
     id 'maven-publish'
     id 'java-gradle-plugin'
 
-    id 'dev.zeith.gradle.JvmTsGen' version "1.2.0"
+    id 'dev.zeith.gradle.JvmTsGen' version "1.3.0"
 }
 
 idea {
@@ -20,13 +20,15 @@ genTypescript {
 //    outputDir = file("build/generated/ts")
     cleanOutputDir = true
     includeJvm = true
-    tsNoCheck = true
-//    logSkippedClasses = true
-//    detailedErrorLog = true
 //    classFilter = { it.startsWith("java/util/Array") }
     maxQueueSize = 128
     enabledExtensions = ['org.mozilla:rhino:__javaObject__']
     disabledExtensions = []
+    generatorSettings {
+//        importStrategy = dev.zeith.jvmtsgen.tasks.ImportStrategy.REQUIRE
+        noTsCheck = true
+        enableVarargs = false
+    }
 }
 
 repositories {
@@ -37,7 +39,7 @@ repositories {
 }
 
 dependencies {
-    implementation("dev.zeith.libs:TsFacadeGenerator:1.2.0")
+    implementation("dev.zeith.libs:TsFacadeGenerator:1.3.0")
     implementation("org.ow2.asm:asm:$owasm")
     implementation("org.ow2.asm:asm-tree:$owasm")
     compileOnly "org.projectlombok:lombok:$lombok"

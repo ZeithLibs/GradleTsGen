@@ -1,17 +1,19 @@
 package dev.zeith.jvmtsgen.tasks;
 
 import dev.zeith.jvmtsgen.src.Source;
-import dev.zeith.jvmtsgen.util.TsMultiGenerator;
+import dev.zeith.jvmtsgen.util.*;
 import dev.zeith.tsgen.*;
 import dev.zeith.tsgen.imports.BaseImportModel;
+import groovy.lang.Closure;
 import lombok.Setter;
-import org.gradle.api.DefaultTask;
+import org.gradle.api.*;
 import org.gradle.api.artifacts.*;
 import org.gradle.api.file.DirectoryProperty;
 import org.gradle.api.provider.*;
 import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.*;
 import org.gradle.api.tasks.Optional;
+import org.gradle.util.internal.ConfigureUtil;
 import org.gradle.work.DisableCachingByDefault;
 
 import java.io.*;
@@ -23,20 +25,13 @@ import java.util.function.*;
 public abstract class GenTypescriptTask
 		extends DefaultTask
 {
+	private final GeneratorSettings generatorSettings = new GeneratorSettings();
+	
+	@Setter
+	private Spec<String> classFilter = s -> true;
+	
 	@OutputDirectory
 	public abstract DirectoryProperty getOutputDir();
-	
-	@Input
-	@Optional
-	public abstract Property<ImportStrategy> getImportStrategy();
-	
-	@Input
-	@Optional
-	public abstract Property<Boolean> getLogSkippedClasses();
-	
-	@Input
-	@Optional
-	public abstract Property<Boolean> getDetailedErrorLog();
 	
 	@Input
 	@Optional
@@ -45,10 +40,6 @@ public abstract class GenTypescriptTask
 	@Input
 	@Optional
 	public abstract Property<Boolean> getCleanOutputDir();
-	
-	@Input
-	@Optional
-	public abstract Property<Boolean> getTsNoCheck();
 	
 	@Input
 	@Optional
@@ -61,9 +52,6 @@ public abstract class GenTypescriptTask
 	@Input
 	@Optional
 	public abstract ListProperty<String> getDisabledExtensions();
-	
-	@Setter
-	private Spec<String> classFilter = s -> true;
 	
 	@TaskAction
 	public void doTask()
@@ -138,17 +126,21 @@ public abstract class GenTypescriptTask
 		
 		var pathResolver = IPathResolver.FROM_PACKAGE;
 		
-		BaseImportModel importModel = getImportStrategy().getOrElse(ImportStrategy.IMPORT_FROM).getImportModel().clone();
+		BaseImportModel importModel = generatorSettings.getImportStrategy().getImportModel().clone();
 		importModel.setFilePath(pathResolver);
-		boolean detailedErrorLog = getDetailedErrorLog().getOrElse(false);
-		boolean logSkippedClasses = getLogSkippedClasses().getOrElse(false);
+		boolean detailedErrorLog = generatorSettings.isDetailedErrorLog();
+		boolean logSkippedClasses = generatorSettings.isLogSkippedClasses();
 		
 		Supplier<BulkTypeScriptExporter> exporterFactory = () -> BulkTypeScriptExporter
 				.builder()
 				.outDir(outDir)
 				.importModel(importModel)
 				.pathResolver(pathResolver)
-				.configurator(tsg -> tsg.withExceptionHandler(GeneratorExceptionHandler.SKIP_FAILED_ENTRY))
+				.configurator(tsg ->
+				{
+					generatorSettings.apply(tsg);
+					tsg.exceptionHandler(GeneratorExceptionHandler.SKIP_FAILED_ENTRY);
+				})
 				.build();
 		
 		Predicate<String> filter = classFilter::isSatisfiedBy;
@@ -163,14 +155,25 @@ public abstract class GenTypescriptTask
 				importModel,
 				logSkippedClasses,
 				detailedErrorLog,
-				getTsNoCheck().getOrElse(true),
+				generatorSettings.isNoTsCheck(),
 				getMaxQueueSize().getOrElse(0),
 				ext ->
 				{
 					var id = ext.getId();
 					return enabledExt.contains(id) || (ext.defaultEnabled() && !disabledExt.contains(id));
-				}
+				},
+				generatorSettings.getNewline()
 		);
+	}
+	
+	public void generatorSettings(Action<? super GeneratorSettings> action)
+	{
+		action.execute(generatorSettings);
+	}
+	
+	public void generatorSettings(Closure<?> closure)
+	{
+		ConfigureUtil.configure(closure, generatorSettings);
 	}
 	
 	private boolean isProjectOutput(File file, SourceSet main)

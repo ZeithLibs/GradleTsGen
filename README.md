@@ -19,7 +19,7 @@ pluginManagement {
 - `build.gradle`: 
 ```groovy
 plugins {
-    id 'dev.zeith.gradle.JvmTsGen' version "1.2.0"
+    id 'dev.zeith.gradle.JvmTsGen' version "1.3.0"
 }
 ```
 
@@ -30,32 +30,17 @@ And here are some optional configuration options you can add:
 genTypescript {
     // The output directory for the typescript.
     outputDir = file("build/generated/ts")
-    
+
     // Should the outputDir be completely wiped before running generation?
     cleanOutputDir = true
-
-    // Which import strategy should be used for TS facade generation?
-    // IMPORT_FROM -> import { Object } from "java/lang.ts";
-    // REQUIRE -> const { Object } = require("java/lang.ts");
-    // VisualStudio usually prefers IMPORT_FROM, and if not set, this is the default value for the task.
-    importStrategy = dev.zeith.jvmtsgen.tasks.ImportStrategy.IMPORT_FROM
 
     // Include gradle's build Java modules into TS facade generation generation?
     includeJvm = true
 
-    // Prints which classes failed to generate TS facade.
-    logSkippedClasses = false
-    
-    // For debugging purposes: prints the stack trace when class parsing fails, only used when logSkippedClasses is true
-    detailedErrorLog = false
-
-    // add // @ts-nocheck at the top of every generated file
-    tsNoCheck = true
-    
-    // set to > 0 if you experience out of memory
+    // set to > 0 if you experience out of memory.
     maxQueueSize = 0
-    
-    // Filters the classes to be included into generation as a path predicate
+
+    // Filters the classes to be included into generation as a path predicate.
     classFilter = { it.startsWith("java/") }
 
     // Typescript generation extensions.
@@ -64,5 +49,32 @@ genTypescript {
     // - 'org.mozilla:rhino:__javaObject__' - Adds static Class<T> field __javaObject__ into every declare class. Useful for interop with Mozilla Rhino
     enabledExtensions = ['org.mozilla:rhino:__javaObject__']
     disabledExtensions = []
+
+    // All setting fields here are optional.
+    generatorSettings {
+        // Which import strategy should be used for TS facade generation?
+        // IMPORT_FROM -> import { Object } from "java/lang.ts";
+        // REQUIRE -> const { Object } = require("java/lang.ts");
+        // VisualStudio usually prefers IMPORT_FROM, and if not set, this is the default value for the task.
+        importStrategy = dev.zeith.jvmtsgen.tasks.ImportStrategy.REQUIRE
+        
+        // add // @ts-nocheck at the top of every generated file. By default is set to true.
+        noTsCheck = false
+        
+        // Prints which classes failed to generate TS facade.
+        logSkippedClasses = false
+
+        // For debugging purposes: prints the stack trace when class parsing fails, only used when logSkippedClasses is true.
+        detailedErrorLog = false
+        
+        // Enable varargs to be converted into ...name: Type. true by default.
+        enableVarargs = false
+        
+        // Newline character to use when generating. \n by default.
+        newline = '\n'
+        
+        // Indentation character to use for inner methods & fields. \t by default.
+        indent = '\t'
+    }
 }
 ```
